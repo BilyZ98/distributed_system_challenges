@@ -5,6 +5,8 @@ services:
       target: base
     volumes:
       - $PWD:/usr/src/project
+    working_dir: /usr/src/project/maelstrom-echo
+    command:   go get github.com/jepsen-io/maelstrom/demo/go && go install  -buildvcs=false .  && bash
 
   # backend:
   #   build:

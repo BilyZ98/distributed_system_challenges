@@ -1,18 +1,18 @@
-use anyhow::{ Context};
-use serde::{Serialize, de::Deserialize, DeserializeOwned};
+use anyhow::{ bail, Context};
+use serde::{Serialize, Deserialize };
 use std::io::{StdoutLock, Write};
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message<Payload> { 
+pub struct Message { 
     pub src: String,
-    #[serde(rename = "dst")]
+    #[serde(rename = "dest")]
     pub dst: String,
-    pub body: Body<Payload>,
+    pub body: Body,
 }
 
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Body {
+pub struct Body {
     #[serde(rename = "msg_id")]
     pub id: Option<usize>,
     pub in_reply_to: Option<usize>,
@@ -31,16 +31,16 @@ pub struct Init {
 
 
 pub trait Node {
-    pub fn step(
+    fn step(
         &mut self,
-        input: Message<Payload>,
+        input: Message,
         output: &mut StdoutLock,
     ) -> anyhow::Result<()>;
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
-enum Payload {
+pub enum Payload {
     Echo { echo : String },
     EchoOk { echo: String },
     Error { error: String },
@@ -54,59 +54,98 @@ enum Payload {
 
 struct EchoNode {
     id: usize,
-};
+}
 
 impl EchoNode {
     pub fn step(
         &mut self,
         input: Message,
-        output: &mut serde_json::Serializer<StdoutLock>,
+        output: &mut StdoutLock,
     ) -> anyhow::Result<()> {
-        let reply = Message {
-            src: input.dst,
-            dst: input.src,
-            body: Body {
-                id: Some(self.id),
-                in_reply_to: input.body.id,
-                payload: Payload::EchoOk { echo},
-            },
-        };
-        self.id += 1;
-        Ok(())
-    }
-    )
-    pub fn handle(&mut self, 
-        input: Message, 
-        output: &mut serde_json::Serializer<StdoutLock>,
-    ) -> anyhow::Result<()> {
-        let reply = Message {
-            src: input.dst,
-            dst: input.src,
-            body: Body {
-                id: Some(self.id),
-                in_reply_to: input.body.id,
-                payload: Payload::Echo {
-                    echo: input.body.payload.echo,
-                },
-            },
+        match input.body.payload {
+            Payload::Init { .. } =>  {
+                let reply  = Message { 
+                    src: input.dst,
+                    dst: input.src,
+                    body: Body {
+                        id: Some(self.id),
+                        in_reply_to: input.body.id,
+                        payload: Payload::InitOk,
+                    },
+                };
+                serde_json::to_writer(&mut *output, &reply).
+                    context("serialize response to init")?;
+                output.write_all(b"\n").context("write trailing newline")?;
+                self.id += 1;
+            }
+
+            Payload::Echo { echo } =>  {
+                let reply = Message {
+                    src: input.dst,
+                    dst: input.src,
+                    body: Body {
+                        id: Some(self.id),
+                        in_reply_to: input.body.id,
+                        payload: Payload::EchoOk { echo},
+                    },
+                };
+                serde_json::to_writer(&mut *output, &reply).
+                    context("serialize response to init")?;
+                output.write_all(b"\n").context("write trailing newline")?;
+                self.id += 1;
+            }
+
+
+            Payload::InitOk { .. } =>  {
+                bail!("Received InitOk message from {}", input.src);
+            }
+            Payload::EchoOk { .. } =>  {
+            }
+
+            Payload::Error { .. } =>  {
+                bail!("Received Error message from {}", input.src);
+            }
         }
         Ok(())
+
     }
+    
+    // pub fn handle(&mut self, 
+    //     input: Message, 
+    //     output: &mut serde_json::Serializer<StdoutLock>,
+    // ) -> anyhow::Result<()> {
+    //     let reply = Message {
+    //         src: input.dst,
+    //         dst: input.src,
+    //         body: Body {
+    //             id: Some(self.id),
+    //             in_reply_to: input.body.id,
+    //             payload: Payload::Echo {
+    //                 echo: input.body.payload.echo,
+    //             },
+    //         },
+    //     };
+    //     Ok(())
+    // }
 }
 
-pub fn main_loop<S, Payload>(mut state: S) -> anyhow::Result<()>
-where 
-    S: Node<Payload>,
-    Payload: Deserialize{
+pub fn main() -> anyhow::Result<()> {
     let stdin = std::io::stdin().lock();
-    let stdout = std::io::stdout().lock();
+    let inputs  = serde_json::Deserializer::from_reader(stdin).into_iter::<Message>();
 
-    let input = serde_json::Deserializer::from_reader(stdin).into_iter::<Message>();
 
+    let mut stdout = std::io::stdout().lock();
+    // let mut output = serde_json::Serializer::new(stdout);
+
+    let mut state = EchoNode { id: 0 };
 
     for input in inputs {
-        let input = input?;
+        let input = input.context("Maelstrom input from STDIN could not be deserialized")?;
+        state.step(input, &mut stdout)
+            .context("Node step function failed")?;
+
     }
 
-    println!("Hello, world!");
+    Ok(())
+
 }

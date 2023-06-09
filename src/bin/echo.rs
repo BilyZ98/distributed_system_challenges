@@ -1,42 +1,43 @@
+use distributed_system_challenges::*;
 use anyhow::{ bail, Context};
 use serde::{Serialize, Deserialize };
 use std::io::{StdoutLock, Write};
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message { 
-    pub src: String,
-    #[serde(rename = "dest")]
-    pub dst: String,
-    pub body: Body,
-}
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct Message { 
+//     pub src: String,
+//     #[serde(rename = "dest")]
+//     pub dst: String,
+//     pub body: Body,
+// }
 
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Body {
-    #[serde(rename = "msg_id")]
-    pub id: Option<usize>,
-    pub in_reply_to: Option<usize>,
-    #[serde(flatten)]
-    pub payload: Payload,
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct Body {
+//     #[serde(rename = "msg_id")]
+//     pub id: Option<usize>,
+//     pub in_reply_to: Option<usize>,
+//     #[serde(flatten)]
+//     pub payload: Payload,
 
-}
+// }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Init {
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct Init {
 
-    pub node_id: String,
-    pub node_ids: Vec<String>,
-}
+//     pub node_id: String,
+//     pub node_ids: Vec<String>,
+// }
 
 
 
-pub trait Node {
-    fn step(
-        &mut self,
-        input: Message,
-        output: &mut StdoutLock,
-    ) -> anyhow::Result<()>;
-}
+// pub trait Node {
+//     fn step(
+//         &mut self,
+//         input: Message,
+//         output: &mut StdoutLock,
+//     ) -> anyhow::Result<()>;
+// }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
@@ -56,10 +57,10 @@ struct EchoNode {
     id: usize,
 }
 
-impl EchoNode {
-    pub fn step(
+impl Node<Payload> for EchoNode {
+    fn step(
         &mut self,
-        input: Message,
+        input: Message<Payload>,
         output: &mut StdoutLock,
     ) -> anyhow::Result<()> {
         match input.body.payload {
@@ -130,22 +131,24 @@ impl EchoNode {
 }
 
 pub fn main() -> anyhow::Result<()> {
-    let stdin = std::io::stdin().lock();
-    let inputs  = serde_json::Deserializer::from_reader(stdin).into_iter::<Message>();
+    main_loop(EchoNode { id: 0 })
+    // let stdin = std::io::stdin().lock();
+
+    // let inputs  = serde_json::Deserializer::from_reader(stdin).into_iter::<Message>();
 
 
-    let mut stdout = std::io::stdout().lock();
-    // let mut output = serde_json::Serializer::new(stdout);
+    // let mut stdout = std::io::stdout().lock();
+    // // let mut output = serde_json::Serializer::new(stdout);
 
-    let mut state = EchoNode { id: 0 };
+    // let mut state = EchoNode { id: 0 };
 
-    for input in inputs {
-        let input = input.context("Maelstrom input from STDIN could not be deserialized")?;
-        state.step(input, &mut stdout)
-            .context("Node step function failed")?;
+    // for input in inputs {
+    //     let input = input.context("Maelstrom input from STDIN could not be deserialized")?;
+    //     state.step(input, &mut stdout)
+    //         .context("Node step function failed")?;
 
-    }
+    // }
 
-    Ok(())
+    // Ok(())
 
 }

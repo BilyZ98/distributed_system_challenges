@@ -60,25 +60,23 @@ pub trait Node<S, Payload> {
 }
 
 
-    
-    // pub fn handle(&mut self, 
-    //     input: Message, 
-    //     output: &mut serde_json::Serializer<StdoutLock>,
-    // ) -> anyhow::Result<()> {
-    //     let reply = Message {
-    //         src: input.dst,
-    //         dst: input.src,
-    //         body: Body {
-    //             id: Some(self.id),
-    //             in_reply_to: input.body.id,
-    //             payload: Payload::Echo {
-    //                 echo: input.body.payload.echo,
-    //             },
-    //         },
-    //     };
-    //     Ok(())
-    // }
-
+impl <Payload> Message<Payload> {
+    pub fn into_reply(self, id: Option<&mut usize> ) -> Self {
+        Message {
+            src: self.dst,
+            dst: self.src,
+            body: Body {
+                id: id.map(|id| {
+                    let mid = *id;
+                    *id += 1;
+                    mid
+                }),
+                in_reply_to: self.body.id,
+                payload: self.body.payload,
+            },
+        }
+    }
+}   
 
 
 pub fn main_loop<S, N, P>(init_state : S) -> anyhow::Result<()>

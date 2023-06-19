@@ -1,5 +1,6 @@
 use anyhow::Context;
 use distributed_system_challenges::*;
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::io::{StdoutLock, Write};
@@ -87,20 +88,31 @@ impl Node<(), Payload, InjectedPayload> for BroadcastNode {
                 InjectedPayload::Gossip => {
                     for n in &self.neighbors {
                         let known_to_n = &self.known[n];
+                        let (already_known, mut notify_of): (HashSet<_>, HashSet<_>) = self
+                            .messages
+                            .iter()
+                            .copied()
+                            .partition(|m| !known_to_n.contains(m));
+                        // if we know that n knows m, we don't tell n that _we_ know m,
+                        // so n will send us m for all eternity, so, we include a  copule
+                        // of extra m's messages so they gradually know all the things
+                        // that we know without sending lots of extra stuff each time
+                        // set pecentage of extra messages to 10% to avoid excessive overhead
+                        eprintln!("notify of {}/{}", notify_of.len(), self.messages.len());
+
+                        notify_of.extend(already_known.iter().filter(|_| {
+                            rand::thread_rng().gen_ratio(
+                                10.min(already_known.len()) as u32,
+                                already_known.len() as u32,
+                            )
+                        }));
                         Message {
                             src: self.node_id.clone(),
                             dst: n.clone(),
                             body: Body {
                                 id: None,
                                 in_reply_to: None,
-                                payload: Payload::Gossip {
-                                    seen: self
-                                        .messages
-                                        .iter()
-                                        .copied()
-                                        .filter(|m| !known_to_n.contains(m))
-                                        .collect(),
-                                },
+                                payload: Payload::Gossip { seen: notify_of },
                             },
                         }
                         .send(&mut *output)
@@ -114,6 +126,10 @@ impl Node<(), Payload, InjectedPayload> for BroadcastNode {
                 let mut reply = input.into_reply(Some(&mut self.id));
                 match reply.body.payload {
                     Payload::Gossip { seen } => {
+                        self.known
+                            .get_mut(&reply.dst)
+                            .expect("dst node known")
+                            .extend(seen.iter().copied());
                         self.messages.extend(seen);
                     }
                     Payload::Broadcast { message } => {

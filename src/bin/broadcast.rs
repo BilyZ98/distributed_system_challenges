@@ -15,7 +15,7 @@ pub enum Payload {
     BroadcastOk,
     Read,
     ReadOk {
-        messages: Vec<usize>,
+        messages: HashSet<usize>,
     },
     // #[serde(flatten)]
     Topology {
@@ -37,7 +37,7 @@ enum InjectedPayload {
 struct BroadcastNode {
     id: usize,
     // received_msgs: Vec<usize>,
-    messages: Vec<usize>,
+    messages: HashSet<usize>,
     // topology: HashMap<String, Vec<String>>,
     neighbors: Vec<String>,
     node_id: String,
@@ -66,7 +66,7 @@ impl Node<(), Payload, InjectedPayload> for BroadcastNode {
         Ok(Self {
             node_id: init.node_id,
             id: 1,
-            messages: Vec::new(),
+            messages: HashSet::new(),
             neighbors: Vec::new(),
             known: init
                 .node_ids
@@ -92,7 +92,7 @@ impl Node<(), Payload, InjectedPayload> for BroadcastNode {
                             .messages
                             .iter()
                             .copied()
-                            .partition(|m| !known_to_n.contains(m));
+                            .partition(|m| known_to_n.contains(m));
                         // if we know that n knows m, we don't tell n that _we_ know m,
                         // so n will send us m for all eternity, so, we include a  copule
                         // of extra m's messages so they gradually know all the things
@@ -133,7 +133,7 @@ impl Node<(), Payload, InjectedPayload> for BroadcastNode {
                         self.messages.extend(seen);
                     }
                     Payload::Broadcast { message } => {
-                        self.messages.push(message);
+                        self.messages.insert(message);
                         reply.body.payload = Payload::BroadcastOk;
                         reply.send(&mut *output).context("reply  to broadcast")?;
                         self.id += 1;

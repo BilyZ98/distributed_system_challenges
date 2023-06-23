@@ -43,6 +43,8 @@ struct BroadcastNode {
     node_id: String,
     known: HashMap<String, HashSet<usize>>,
 
+    other_nodes: Vec<String>,
+
     msg_communicated: HashMap<usize, HashSet<usize>>,
 }
 
@@ -56,7 +58,7 @@ impl Node<(), Payload, InjectedPayload> for BroadcastNode {
             // generate gossip events
             // TODO: handle EOF signal
             loop {
-                std::thread::sleep(std::time::Duration::from_millis(300));
+                std::thread::sleep(std::time::Duration::from_millis(500));
                 if let Err(_) = tx.send(Event::Injected(InjectedPayload::Gossip)) {
                     break;
                 }
@@ -64,16 +66,22 @@ impl Node<(), Payload, InjectedPayload> for BroadcastNode {
         });
 
         Ok(Self {
-            node_id: init.node_id,
+            node_id: init.node_id.clone(),
             id: 1,
             messages: HashSet::new(),
             neighbors: Vec::new(),
             known: init
                 .node_ids
+                .clone()
                 .into_iter()
                 .map(|nid| (nid, HashSet::new()))
                 .collect(),
             msg_communicated: HashMap::new(),
+            other_nodes: init
+                .node_ids
+                .into_iter()
+                .filter(|n| n != &init.node_id)
+                .collect(),
         })
     }
     fn step(
@@ -86,7 +94,7 @@ impl Node<(), Payload, InjectedPayload> for BroadcastNode {
 
             Event::Injected(payload) => match payload {
                 InjectedPayload::Gossip => {
-                    for n in &self.neighbors {
+                    for n in &self.other_nodes {
                         let known_to_n = &self.known[n];
                         let (already_known, mut notify_of): (HashSet<_>, HashSet<_>) = self
                             .messages
